@@ -1,0 +1,9 @@
+Guide lancement kafka
+lancer image dans docker -> CMD
+créer topic :(optionnel) docker exec -it !!! nom de l'image docker!!! /opt/kafka/bin/kafka-topics.sh --create --topic quickstart-events --bootstrap-server localhost:9092
+ecrire dans le topic : docker exec -it  !!! nom de l'image docker!!! /opt/kafka/bin/kafka-console-producer.sh --topic quickstart-events --bootstrap-server localhost:9092
+lire les message du topic : docker exec -it !!! nom de l'image docker!!! /opt/kafka/bin/kafka-console-consumer.sh --topic quickstart-events --from-beginning --bootstrap-server localhost:9092
+
+
+guide lancement programme producer depuis pipeline real time : 
+ py -m kafka_package.kafka_producer_test
