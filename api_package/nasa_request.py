@@ -1,5 +1,6 @@
 import requests
 import json
+import time
 def nasa_request():
     sorted_data = []
     try:
@@ -30,11 +31,11 @@ def nasa_request():
         #orbit class
         asteroid_data["orbit_class_type"] = asteroid['orbital_data']['orbit_class']['orbit_class_type']
         asteroid_data["orbit_class_description"] = asteroid['orbital_data']['orbit_class']['orbit_class_description']
-        asteroid_data["eccentricity"] = asteroid['orbital_data']['eccentricity']
-        asteroid_data["semi_major_axis_au"] = asteroid['orbital_data']['semi_major_axis']
-        asteroid_data["inclination_deg"] =asteroid['orbital_data']['inclination']
-        asteroid_data["orbital_period_days"] = asteroid['orbital_data']['orbital_period']
-        asteroid_data["perihelion_distance_au"] = asteroid['orbital_data']['perihelion_distance']
+        asteroid_data["eccentricity"] = round(float(asteroid['orbital_data']['eccentricity']),3)
+        asteroid_data["semi_major_axis_au"] = round(float(asteroid['orbital_data']['semi_major_axis']),3)
+        asteroid_data["inclination_deg"] =round(float(asteroid['orbital_data']['inclination']),3)
+        asteroid_data["orbital_period_days"] = round(float(asteroid['orbital_data']['orbital_period']),3)
+        asteroid_data["perihelion_distance_au"] = round(float(asteroid['orbital_data']['perihelion_distance']),3)
         asteroid_data["orbit_uncertainty"] = asteroid['orbital_data']['orbit_uncertainty']
 
 
@@ -43,14 +44,17 @@ def nasa_request():
             asteroid_data["approach_date"] = asteroid['close_approach_data'][i]['close_approach_date']
             asteroid_data["approach_date_full"] = asteroid['close_approach_data'][i]['close_approach_date_full']
             asteroid_data["orbiting_body"] = asteroid['close_approach_data'][i]['orbiting_body']
-            asteroid_data["velocity_km_s"] = asteroid['close_approach_data'][i]['relative_velocity']['kilometers_per_second']
-            asteroid_data["velocity_km_h"] = asteroid['close_approach_data'][i]['relative_velocity']['kilometers_per_hour']
-            asteroid_data["miss_distance_km"] = asteroid['close_approach_data'][i]['miss_distance']['kilometers']
-            asteroid_data["miss_distance_lunar"] = asteroid['close_approach_data'][i]['miss_distance']['lunar']
-            asteroid_data["miss_distance_au"] = asteroid['close_approach_data'][i]['miss_distance']['astronomical']
+            asteroid_data["velocity_km_s"] = round(float(asteroid['close_approach_data'][i]['relative_velocity']['kilometers_per_second']),3)
+            asteroid_data["velocity_km_h"] = round(float(asteroid['close_approach_data'][i]['relative_velocity']['kilometers_per_hour']),3)
+            asteroid_data["miss_distance_km"] = round(float(asteroid['close_approach_data'][i]['miss_distance']['kilometers']),3)
+            asteroid_data["miss_distance_lunar"] = round(float(asteroid['close_approach_data'][i]['miss_distance']['lunar']),3)
+            asteroid_data["miss_distance_au"] = round(float(asteroid['close_approach_data'][i]['miss_distance']['astronomical']),3)
+            asteroid_data["timestamp_event"] = time.time()
+
 
             asteroid_data = json.dumps(asteroid_data)
             asteroid_data = json.loads(asteroid_data)
             sorted_data.append(asteroid_data)
+
     return sorted_data
 nasa_request()
