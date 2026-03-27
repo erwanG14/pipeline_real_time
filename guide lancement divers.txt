@@ -7,3 +7,19 @@ lire les message du topic : docker exec -it !!! nom de l'image docker!!! /opt/ka
 
 guide lancement programme producer depuis pipeline real time : 
  py -m kafka_package.kafka_producer_test
+
+
+guide lancement app complet :
+ouvrir dossier docker seul 
+lancer le programme laucn_docker.py
+attendre 10 sec
+ouvrir avec une nouvelle fenêtre pipeline_real_time
+suivre le guide lancement programe producer 
+resultat dans fenêtre launch_docker
+
+
+
+ Point au 27/03/2026
+
+ Docker qui lance les deux APP 
+ Transformation dans le comsumer Spark fonctionnelle a part group by (pas de batch prouvant l"efficacité)

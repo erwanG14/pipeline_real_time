@@ -1,8 +1,7 @@
 import json
 from pyspark.sql import SparkSession 
 from pyspark.sql.types import StructType, StringType, IntegerType, DoubleType,BooleanType , TimestampType
-from pyspark.sql.functions import col, from_json, window
-
+from pyspark.sql.functions import col, from_json, window,to_timestamp
 spark = SparkSession.builder\
     .appName("KafkaStream")\
     .master("local[*]")\
@@ -14,6 +13,7 @@ spark = SparkSession.builder\
     )\
     .getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")
+
 df_raw = spark \
   .readStream \
   .format("kafka") \
@@ -25,7 +25,7 @@ schema = StructType()\
     .add("name_limited",StringType()) \
     .add("designation",StringType()) \
     .add("asteroid_full_name",StringType()) \
-    .add("neo_reference_id",IntegerType()) \
+    .add("neo_reference_id",StringType()) \
     .add("hazardous_flag",BooleanType()) \
     .add("sentry_flag",BooleanType()) \
     .add("diameter_min_km",DoubleType()) \
@@ -56,6 +56,11 @@ df = df_raw\
     .select(from_json(col("json"), schema).alias("data"))\
     .select("data.*")
 
+
+
+df_KM = df.drop('velocity_km_h','miss_distance_lunar','miss_distance_au')
+
+
 df_grouped = df\
     .withWatermark("timestamp_event", "5 seconds")\
     .groupBy(
@@ -66,6 +71,7 @@ df_grouped = df\
 
 query = df_grouped.writeStream\
          .format("console")\
+         .outputMode("append")\
          .option("truncate" ,"false")\
          .start()
 query.awaitTermination()

@@ -1,6 +1,7 @@
 import requests
 import json
 import time
+from  datetime import datetime, timezone
 def nasa_request():
     sorted_data = []
     try:
@@ -49,7 +50,7 @@ def nasa_request():
             asteroid_data["miss_distance_km"] = round(float(asteroid['close_approach_data'][i]['miss_distance']['kilometers']),3)
             asteroid_data["miss_distance_lunar"] = round(float(asteroid['close_approach_data'][i]['miss_distance']['lunar']),3)
             asteroid_data["miss_distance_au"] = round(float(asteroid['close_approach_data'][i]['miss_distance']['astronomical']),3)
-            asteroid_data["timestamp_event"] = time.time()
+            asteroid_data["timestamp_event"] = datetime.now(timezone.utc).isoformat()
 
 
             asteroid_data = json.dumps(asteroid_data)

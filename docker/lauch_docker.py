@@ -11,7 +11,7 @@ kafka_container = client.containers.run("apache/kafka",name="kafka_image",detach
         "KAFKA_CONTROLLER_QUORUM_VOTERS": "1@localhost:9093",
         "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR": "1"
     })
-time.sleep(4)
+time.sleep(2)
 
 exec_result = kafka_container.exec_run(
     cmd=[
