@@ -61,7 +61,7 @@ df = df_raw\
 df_KM = df.drop('velocity_km_h','miss_distance_lunar','miss_distance_au')
 
 
-df_grouped = df\
+df_grouped = df_KM\
     .withWatermark("timestamp_event", "5 seconds")\
     .groupBy(
         window("timestamp_event", "5 seconds"),
@@ -71,7 +71,7 @@ df_grouped = df\
 
 query = df_grouped.writeStream\
          .format("console")\
-         .outputMode("append")\
+         .outputMode("update")\
          .option("truncate" ,"false")\
          .start()
 query.awaitTermination()
