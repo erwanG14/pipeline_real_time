@@ -1,7 +1,11 @@
 import json
 from pyspark.sql import SparkSession 
+from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StringType, IntegerType, DoubleType,BooleanType , TimestampType
 from pyspark.sql.functions import col, from_json, window,to_timestamp
+
+lunar_distance_km = 384000
+
 spark = SparkSession.builder\
     .appName("KafkaStream")\
     .master("local[*]")\
@@ -51,6 +55,7 @@ schema = StructType()\
     .add("timestamp_event",TimestampType()) 
 
 
+
 df = df_raw\
     .selectExpr("CAST(value AS STRING) as json")\
     .select(from_json(col("json"), schema).alias("data"))\
@@ -60,16 +65,51 @@ df = df_raw\
 
 df_KM = df.drop('velocity_km_h','miss_distance_lunar','miss_distance_au')
 
+schema_KM_col_double = [
+    field.name
+    for field in df_KM.schema.fields
+    if isinstance(field.dataType, DoubleType)
+]
 
 df_grouped = df_KM\
     .withWatermark("timestamp_event", "5 seconds")\
     .groupBy(
         window("timestamp_event", "5 seconds"),
-        "asteroid_full_name"
-    )\
-    .avg()
+        "asteroid_full_name","hazardous_flag"
+    ).agg(
+        *[F.avg(col).alias(col+"_avg")
+        for col in schema_KM_col_double
+        ]
+    )
 
-query = df_grouped.writeStream\
+df_kpi_size = df_grouped.withColumn(
+    "Size KPI",
+    F.when(col("diameter_avg_km_avg") < 0.05, "tiny")
+    .when(col("diameter_avg_km_avg") < 0.2,"small")
+    .when(col("diameter_avg_km_avg") < 1,"medium")
+    .otherwise("large")
+)
+df_kpi_mach = df_kpi_size.withColumn(
+    "mach KPI",
+    (col("velocity_km_s_avg")*3600)/1224,
+)
+
+df_risk = df_kpi_mach.withColumn(
+    "risk score",
+    (
+        F.when(col("hazardous_flag") == True, 50).otherwise(0)
+        + F.when(col("diameter_avg_km_avg")<1, 20).otherwise(0)
+        + F.when(col("miss_distance_km_avg") < lunar_distance_km, 40)
+          .when(col("miss_distance_km_avg") < lunar_distance_km * 5, 25)
+          .when(col("miss_distance_km_avg") < lunar_distance_km *20, 10)
+          .otherwise(0)
+        + F.when(col("mach KPI") > 5, 15).otherwise(0)
+    )
+)
+
+    
+
+query = df_risk.writeStream\
          .format("console")\
          .outputMode("update")\
          .option("truncate" ,"false")\

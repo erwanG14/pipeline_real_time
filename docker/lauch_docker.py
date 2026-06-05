@@ -1,5 +1,6 @@
 import docker
 import time
+from docker.types import Mount
 client = docker.from_env()
 kafka_container = client.containers.run("apache/kafka",name="kafka_image",detach=True,ports={"9092/tcp": 9092},environment={
         "KAFKA_NODE_ID": "1",
@@ -29,25 +30,33 @@ print(exec_result.output.decode())
 
 time.sleep(2)
 container = client.containers.run(
+    name="spark_consumer_image",
+
     image="apache/spark:4.1.0",
+
     command=[
         "/opt/spark/bin/spark-submit",
         "--master", "local[*]",
-        "--conf", "spark.jars.ivy=/tmp/ivy",   
+        "--conf", "spark.jars.ivy=/tmp/ivy",
         "--packages",
         "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0",
-        "/app/spark_comsumer.py"
+        "/app/spark_consumer.py"
     ],
-    volumes={
-        "C:/perso/pipeline_real_time/pipeline_real_time/kafka_package": {
-            "bind": "/app",
-            "mode": "ro"
-        },
-        "C:/spark-ivy": {
-            "bind": "/tmp/ivy",
-            "mode": "rw"
-        }
-    },
+    mounts=[
+        Mount(
+            target="/app",
+            source=r"C:\perso\Coding\pipeline_real_time\kafka_package",
+            type="bind",
+            read_only=True
+        ),
+        Mount(
+            target="/tmp/ivy",
+            source=r"C:\spark-ivy",
+            type="bind",
+            read_only=False
+        )
+    ],
+    working_dir="/app",
     tty=True,
     detach=True,
     remove=False
