@@ -1,6 +1,5 @@
 import requests
 import json
-import time
 from  datetime import datetime, timezone
 def nasa_request():
     sorted_data = []
@@ -9,8 +8,9 @@ def nasa_request():
         api_key = f.read()
     except : 
         api_key = 'your_nasa_api_keys'
+    api_key = "CIM9MbRo4JP9Cge440Z5YVBsSqgacL1hNkLInc3c"
     url = "https://api.nasa.gov/neo/rest/v1/neo/browse?api_key="+api_key
-    result = requests.get("https://api.nasa.gov/neo/rest/v1/neo/browse?api_key=CIM9MbRo4JP9Cge440Z5YVBsSqgacL1hNkLInc3c")
+    result = requests.get(url)
     data = result.json()['near_earth_objects']
     for asteroid in data: # static data
         asteroid_data = {}
@@ -56,6 +56,4 @@ def nasa_request():
             asteroid_data = json.dumps(asteroid_data)
             asteroid_data = json.loads(asteroid_data)
             sorted_data.append(asteroid_data)
-
     return sorted_data
-nasa_request()

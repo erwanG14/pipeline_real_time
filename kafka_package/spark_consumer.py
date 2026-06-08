@@ -1,4 +1,5 @@
-import json
+import os
+
 from pyspark.sql import SparkSession 
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StringType, IntegerType, DoubleType,BooleanType , TimestampType
@@ -21,7 +22,7 @@ spark.sparkContext.setLogLevel("ERROR")
 df_raw = spark \
   .readStream \
   .format("kafka") \
-  .option("kafka.bootstrap.servers", "host.docker.internal:9092") \
+  .option("kafka.bootstrap.servers", "kafka:9092") \
   .option("subscribe", "test_topic") \
   .load()
 
@@ -107,14 +108,24 @@ df_risk = df_kpi_mach.withColumn(
     )
 )
 
-    
+
+
+
+ready_file = "/opt/spark/work-dir/status/consumer_ready"
+if os.path.exists(ready_file):
+    os.remove(ready_file)    
 
 query = df_risk.writeStream\
          .format("console")\
          .outputMode("update")\
          .option("truncate" ,"false")\
          .start()
-query.awaitTermination()
+open(ready_file, "w").close()
+try:
+    query.awaitTermination()
+finally:
+    if os.path.exists(ready_file):
+        os.remove(ready_file)
          
          
          

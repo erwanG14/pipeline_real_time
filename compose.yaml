@@ -1,0 +1,84 @@
+services:
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka_image
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+    ports: 
+      - "9092:9092"
+    expose:
+      - "9092"
+
+  kafka-init:
+    image: apache/kafka:latest
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "
+      sleep 2 &&
+      /opt/kafka/bin/kafka-topics.sh
+      --bootstrap-server kafka:9092
+      --create
+      --if-not-exists
+      --topic test_topic
+      --partitions 1
+      --replication-factor 1
+      "
+
+  producer_nasa:
+    build:
+      context: ./kafka_package
+      dockerfile: DockerFile
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_TOPIC: "test_topic"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        while [ ! -f /status/consumer_ready ]; do
+          echo "Waiting for Spark consumer..."
+          sleep 1
+        done
+        python kafka_producer_test.py
+    volumes: 
+      - ./kafka_package:/app
+      - consumer_status:/status
+      
+  
+  spark-consumer:
+    image: apache/spark:4.1.0
+    user: root
+    depends_on:
+        kafka-init:
+          condition: service_completed_successfully
+
+    command:
+      - /bin/sh
+      - -c
+      - |
+        sleep 2 &&
+        /opt/spark/bin/spark-submit \
+          --master local[*] \
+          --conf spark.jars.ivy=/tmp/ivy \
+          --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0 \
+          /app/spark_consumer.py
+    volumes: 
+      - ./kafka_package:/app
+      - consumer_status:/opt/spark/work-dir/status
+
+volumes:
+  consumer_status:
+
+
