@@ -5,6 +5,9 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StringType, IntegerType, DoubleType,BooleanType , TimestampType
 from pyspark.sql.functions import col, from_json, window,to_timestamp
 
+ready_file = "/opt/spark/work-dir/status/consumer_ready"
+if os.path.exists(ready_file):
+    os.remove(ready_file) 
 lunar_distance_km = 384000
 
 spark = SparkSession.builder\
@@ -14,7 +17,7 @@ spark = SparkSession.builder\
     .config("spark.driver.bindAddress", "127.0.0.1")\
     .config(
         "spark.jars.packages",
-        "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0"
+        "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0,org.postgresql:postgresql:42.7.3"
     )\
     .getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")
@@ -84,19 +87,19 @@ df_grouped = df_KM\
     )
 
 df_kpi_size = df_grouped.withColumn(
-    "Size KPI",
+    "Size_kpi",
     F.when(col("diameter_avg_km_avg") < 0.05, "tiny")
     .when(col("diameter_avg_km_avg") < 0.2,"small")
     .when(col("diameter_avg_km_avg") < 1,"medium")
     .otherwise("large")
 )
 df_kpi_mach = df_kpi_size.withColumn(
-    "mach KPI",
+    "mach_kpi",
     (col("velocity_km_s_avg")*3600)/1224,
 )
 
 df_risk = df_kpi_mach.withColumn(
-    "risk score",
+    "risk_score",
     (
         F.when(col("hazardous_flag") == True, 50).otherwise(0)
         + F.when(col("diameter_avg_km_avg")<1, 20).otherwise(0)
@@ -104,21 +107,68 @@ df_risk = df_kpi_mach.withColumn(
           .when(col("miss_distance_km_avg") < lunar_distance_km * 5, 25)
           .when(col("miss_distance_km_avg") < lunar_distance_km *20, 10)
           .otherwise(0)
-        + F.when(col("mach KPI") > 5, 15).otherwise(0)
+        + F.when(col("mach_kpi") > 5, 15).otherwise(0)
     )
+)
+df_risk_clean=(df_risk\
+    .withColumn("window_start",col("window.start"))\
+    .withColumn("window_end",col("window.end"))\
+    .drop("window")
 )
 
 
+def write_table(batch_df, batch_id):
+    df_dashboard = batch_df\
+    .withColumn(
+    "distance_lunar_equivalent",
+    col("miss_distance_km_avg") / F.lit(lunar_distance_km)
+).withColumn(
+    "is_close_approach",
+    col("miss_distance_km_avg") < F.lit(lunar_distance_km * 5)
+).select(
+    "window_start",
+    "window_end",
+    "asteroid_full_name",
+    "hazardous_flag",
+    "risk_score",
+    "size_kpi",
+    "mach_kpi",
+    "velocity_km_s_avg",
+    "miss_distance_km_avg",
+    "distance_lunar_equivalent",
+    "is_close_approach"
+)
+    df_dashboard = df_dashboard.dropDuplicates([
+        "asteroid_full_name",
+        "risk_score",
+        "size_kpi",
+        "mach_kpi",
+        "velocity_km_s_avg"
+    ])
+    batch_df.write\
+        .format("jdbc") \
+        .option("url", "jdbc:postgresql://postgres:5432/asteroids_db") \
+        .option("dbtable", "asteroid_risk_raw") \
+        .option("user", "spark") \
+        .option("password", "spark") \
+        .option("driver", "org.postgresql.Driver") \
+        .mode("append") \
+        .save()
+    
+    df_dashboard.write\
+        .format("jdbc") \
+        .option("url", "jdbc:postgresql://postgres:5432/asteroids_db") \
+        .option("dbtable", "asteroid_risk_dashboard_raw") \
+        .option("user", "spark") \
+        .option("password", "spark") \
+        .option("driver", "org.postgresql.Driver") \
+        .mode("append") \
+        .save()
 
-
-ready_file = "/opt/spark/work-dir/status/consumer_ready"
-if os.path.exists(ready_file):
-    os.remove(ready_file)    
-
-query = df_risk.writeStream\
-         .format("console")\
+query = df_risk_clean.writeStream\
+         .foreachBatch(write_table)\
          .outputMode("update")\
-         .option("truncate" ,"false")\
+         .option("checkpointLocation", "/opt/spark/work-dir/checkpoints/asteroid_dashboard") \
          .start()
 open(ready_file, "w").close()
 try:

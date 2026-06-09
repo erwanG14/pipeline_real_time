@@ -33,6 +33,26 @@ services:
       --replication-factor 1
       "
 
+  spark-consumer:
+    image: apache/spark:4.1.0
+    user: root
+    depends_on:
+        kafka-init:
+          condition: service_completed_successfully
+
+    command:
+      - /bin/sh
+      - -c
+      - |
+        /opt/spark/bin/spark-submit \
+          --master local[*] \
+          --conf spark.jars.ivy=/tmp/ivy \
+          --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0,org.postgresql:postgresql:42.7.3 \
+          /app/spark_consumer.py
+    volumes: 
+      - ./kafka_package:/app
+      - consumer_status:/opt/spark/work-dir/status
+
   producer_nasa:
     build:
       context: ./kafka_package
@@ -47,6 +67,7 @@ services:
       - /bin/sh
       - -c
       - |
+        sleep 5
         while [ ! -f /status/consumer_ready ]; do
           echo "Waiting for Spark consumer..."
           sleep 1
@@ -55,30 +76,22 @@ services:
     volumes: 
       - ./kafka_package:/app
       - consumer_status:/status
-      
-  
-  spark-consumer:
-    image: apache/spark:4.1.0
-    user: root
-    depends_on:
-        kafka-init:
-          condition: service_completed_successfully
 
-    command:
-      - /bin/sh
-      - -c
-      - |
-        sleep 2 &&
-        /opt/spark/bin/spark-submit \
-          --master local[*] \
-          --conf spark.jars.ivy=/tmp/ivy \
-          --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0 \
-          /app/spark_consumer.py
-    volumes: 
-      - ./kafka_package:/app
-      - consumer_status:/opt/spark/work-dir/status
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: spark
+      POSTGRES_PASSWORD: spark
+      POSTGRES_DB: asteroids_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+ 
 
 volumes:
   consumer_status:
+  postgres_data:
 
 
