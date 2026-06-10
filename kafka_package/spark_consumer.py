@@ -17,7 +17,7 @@ spark = SparkSession.builder\
     .config("spark.sql.shuffle.partitions", "2") \
     .config(
         "spark.jars.packages",
-        "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0,org.postgresql:postgresql:42.7.3"
+        "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.6,org.postgresql:postgresql:42.7.3"
     )\
     .getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")
@@ -49,7 +49,7 @@ schema = StructType()\
     .add("emergency",StringType()) \
     .add("category",StringType()) \
     .add("messages",IntegerType()) \
-    .add("alert",StringType()) \
+    .add("alert",IntegerType()) \
     .add("seen",DoubleType()) \
     .add("seen_pos",DoubleType()) \
     .add("timestamp_ingest",TimestampType())
@@ -77,69 +77,14 @@ df_silver = df_km.withColumn(
      .otherwise("unknown")
     )
 
-query_silver = writer.write_stream(
-    df_silver,
-    "airplane_silver",
-    "/opt/spark/work-dir/checkpoints/airplane_silver_v2"
-    )
+query = df_silver.writeStream \
+    .foreachBatch(writer.write_all_tables) \
+    .outputMode("append") \
+    .option("checkpointLocation", "/opt/spark/work-dir/checkpoints/airplane_pipeline_v1") \
+    .start()
 
-df_gold_total = df_silver\
-    .withWatermark("timestamp_ingest", "5 seconds")\
-    .groupBy(
-        window(col("timestamp_ingest"),"10 seconds")
-        )\
-    .agg(
-        F.approx_count_distinct("hex").alias("nb_plane"),
-        F.round(F.avg("gs_km_h"),2).alias("average_ground_speed_km_h"),
-        F.round(F.avg("alt_geom_km"),2).alias("average_altitude_geom_km"),
-        F.sum(col("alert")).alias("nb_alert")
-    )
+query.awaitTermination()
 
-df_gold_total = df_gold_total.select(
-    F.col("window.start").alias("window_start"),
-    F.col("window.end").alias("window_end"),
-    F.col("nb_plane"),
-    F.col("average_ground_speed_km_h"),
-    F.col("average_altitude_geom_km"),
-    F.col("nb_alert")
-)
-
-query_gold_total = writer.write_stream(
-    df_gold_total,
-    "airplane_gold_total",
-    "/opt/spark/work-dir/checkpoints/airplane_gold_total_v2"
-    )
-
-df_gold_KPI_speed = df_silver\
-    .withWatermark("timestamp_ingest", "5 seconds")\
-    .groupBy(
-        window(col("timestamp_ingest"),"10 seconds"),
-        "KPI_speed_type"
-        )\
-    .agg(
-        F.approx_count_distinct("hex").alias("nb_plane_per_speed_type"),
-        F.round(F.avg("gs_km_h"),2).alias("average_ground_speed_km_h_per_speed_type"),
-        F.round(F.avg("alt_geom_km"),2).alias("average_altitude_geom_km_per_speed_type"),
-        F.sum(col("alert")).alias("nb_alert_per_speed_type")
-        )
-
-df_gold_KPI_speed = df_gold_KPI_speed.select(
-    F.col("window.start").alias("window_start"),
-    F.col("window.end").alias("window_end"),
-    F.col("KPI_speed_type"),
-    F.col("nb_plane_per_speed_type"),
-    F.col("average_ground_speed_km_h_per_speed_type"),
-    F.col("average_altitude_geom_km_per_speed_type"),
-    F.col("nb_alert_per_speed_type")
-)
-
-query_gold_KPI_speed = writer.write_stream(
-    df_gold_KPI_speed,
-    "airplane_gold_kpi_speed",
-    "/opt/spark/work-dir/checkpoints/airplane_gold_kpi_speed_v2"
-    )
-
-spark.streams.awaitAnyTermination()
 
 
 

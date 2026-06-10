@@ -34,7 +34,7 @@ services:
       "
 
   spark-consumer:
-    image: apache/spark:4.1.0
+    image: apache/spark:3.5.6
     user: root
     depends_on:
         kafka-init:
@@ -47,7 +47,7 @@ services:
         /opt/spark/bin/spark-submit \
           --master local[*] \
           --conf spark.jars.ivy=/tmp/ivy \
-          --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0,org.postgresql:postgresql:42.7.3 \
+          --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.6,org.postgresql:postgresql:42.7.3 \
           /app/spark_consumer.py
     volumes: 
       - ./kafka_package:/app
@@ -67,7 +67,7 @@ services:
       - /bin/sh
       - -c
       - |
-        sleep 20
+        sleep 5
         #while [ ! -f /status/consumer_ready ]; do
         #  echo "Waiting for Spark consumer..."
         #  sleep 1
