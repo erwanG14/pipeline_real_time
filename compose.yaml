@@ -28,7 +28,7 @@ services:
       --bootstrap-server kafka:9092
       --create
       --if-not-exists
-      --topic test_topic
+      --topic airplane_topic
       --partitions 1
       --replication-factor 1
       "
@@ -53,7 +53,7 @@ services:
       - ./kafka_package:/app
       - consumer_status:/opt/spark/work-dir/status
 
-  producer_nasa:
+  producer_airplane:
     build:
       context: ./kafka_package
       dockerfile: DockerFile
@@ -62,17 +62,17 @@ services:
         condition: service_completed_successfully
     environment:
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      KAFKA_TOPIC: "test_topic"
+      KAFKA_TOPIC: "airplane_topic"
     command:
       - /bin/sh
       - -c
       - |
-        sleep 5
-        while [ ! -f /status/consumer_ready ]; do
-          echo "Waiting for Spark consumer..."
-          sleep 1
-        done
-        python kafka_producer_test.py
+        sleep 20
+        #while [ ! -f /status/consumer_ready ]; do
+        #  echo "Waiting for Spark consumer..."
+        #  sleep 1
+        #done
+        python kafka_producer.py
     volumes: 
       - ./kafka_package:/app
       - consumer_status:/status
@@ -83,7 +83,7 @@ services:
     environment:
       POSTGRES_USER: spark
       POSTGRES_PASSWORD: spark
-      POSTGRES_DB: asteroids_db
+      POSTGRES_DB: airplane_db
     ports:
       - "5432:5432"
     volumes:

@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS airplane_gold_total (
+    nb_plane BIGINT,
+    average_ground_speed_km_h DOUBLE PRECISION,
+    average_altitude_geom_km DOUBLE PRECISION,
+    nb_alert BIGINT,
+    window_start TIMESTAMP,
+    window_end TIMESTAMP
+);

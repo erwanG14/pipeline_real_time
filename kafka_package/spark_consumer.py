@@ -1,20 +1,20 @@
 import os
-
+import writer
 from pyspark.sql import SparkSession 
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StringType, IntegerType, DoubleType,BooleanType , TimestampType
-from pyspark.sql.functions import col, from_json, window,to_timestamp
+from pyspark.sql.functions import col, from_json, window,to_timestamp,round
 
 ready_file = "/opt/spark/work-dir/status/consumer_ready"
-if os.path.exists(ready_file):
-    os.remove(ready_file) 
-lunar_distance_km = 384000
+"""if os.path.exists(ready_file):
+    os.remove(ready_file) """
 
 spark = SparkSession.builder\
     .appName("KafkaStream")\
     .master("local[*]")\
     .config("spark.driver.host", "127.0.0.1")\
     .config("spark.driver.bindAddress", "127.0.0.1")\
+    .config("spark.sql.shuffle.partitions", "2") \
     .config(
         "spark.jars.packages",
         "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0,org.postgresql:postgresql:42.7.3"
@@ -26,37 +26,34 @@ df_raw = spark \
   .readStream \
   .format("kafka") \
   .option("kafka.bootstrap.servers", "kafka:9092") \
-  .option("subscribe", "test_topic") \
-  .load()
+  .option("subscribe", "airplane_topic") \
+  .option("startingOffsets", "latest") \
+  .load() #stocker data en tant que bronze
 
 schema = StructType()\
-    .add("name_limited",StringType()) \
-    .add("designation",StringType()) \
-    .add("asteroid_full_name",StringType()) \
-    .add("neo_reference_id",StringType()) \
-    .add("hazardous_flag",BooleanType()) \
-    .add("sentry_flag",BooleanType()) \
-    .add("diameter_min_km",DoubleType()) \
-    .add("diameter_max_km",DoubleType()) \
-    .add("diameter_avg_km",DoubleType()) \
-    .add("orbit_class_type",StringType()) \
-    .add("orbit_class_description",StringType()) \
-    .add("eccentricity",DoubleType()) \
-    .add("semi_major_axis_au",DoubleType()) \
-    .add("inclination_deg",DoubleType()) \
-    .add("orbital_period_days",DoubleType()) \
-    .add("perihelion_distance_au",DoubleType()) \
-    .add("orbit_uncertainty",StringType()) \
-    .add("event_id",StringType()) \
-    .add("approach_date",StringType()) \
-    .add("approach_date_full",StringType()) \
-    .add("orbiting_body",StringType()) \
-    .add("velocity_km_s",DoubleType()) \
-    .add("velocity_km_h",DoubleType()) \
-    .add("miss_distance_km",DoubleType()) \
-    .add("miss_distance_lunar",DoubleType()) \
-    .add("miss_distance_au",DoubleType()) \
-    .add("timestamp_event",TimestampType()) 
+    .add("hex",StringType()) \
+    .add("type",StringType()) \
+    .add("flight",StringType()) \
+    .add("r",StringType()) \
+    .add("t",StringType()) \
+    .add("desc",StringType()) \
+    .add("lat",DoubleType()) \
+    .add("lon",DoubleType()) \
+    .add("alt_geom",IntegerType()) \
+    .add("alt_baro",IntegerType()) \
+    .add("gs",DoubleType()) \
+    .add("track",DoubleType()) \
+    .add("geom_rate",IntegerType()) \
+    .add("mach",DoubleType()) \
+    .add("squawk",IntegerType()) \
+    .add("emergency",StringType()) \
+    .add("category",StringType()) \
+    .add("messages",IntegerType()) \
+    .add("alert",StringType()) \
+    .add("seen",DoubleType()) \
+    .add("seen_pos",DoubleType()) \
+    .add("timestamp_ingest",TimestampType())
+
 
 
 
@@ -65,58 +62,88 @@ df = df_raw\
     .select(from_json(col("json"), schema).alias("data"))\
     .select("data.*")
 
+df_km = df.withColumns({
+    "gs_km_h" : round(col("gs") * 1.852,2),
+    "alt_baro_km" : round(col("alt_baro") * 0.0003048,2),
+    "alt_geom_km" : round(col("alt_geom") * 0.0003048,2)
+    })
 
+df_silver = df_km.withColumn(
+    "KPI_speed_type",
+    F.when(col("gs_km_h") < 200, "slow")
+     .when((col("gs_km_h") >= 200) & (col("gs_km_h") < 500), "medium")
+     .when((col("gs_km_h") >= 500) & (col("gs_km_h") < 700), "fast")
+     .when(col("gs_km_h") >= 700, "really-fast")
+     .otherwise("unknown")
+    )
 
-df_KM = df.drop('velocity_km_h','miss_distance_lunar','miss_distance_au')
+query_silver = writer.write_stream(
+    df_silver,
+    "airplane_silver",
+    "/opt/spark/work-dir/checkpoints/airplane_silver_v2"
+    )
 
-schema_KM_col_double = [
-    field.name
-    for field in df_KM.schema.fields
-    if isinstance(field.dataType, DoubleType)
-]
-
-df_grouped = df_KM\
-    .withWatermark("timestamp_event", "5 seconds")\
+df_gold_total = df_silver\
+    .withWatermark("timestamp_ingest", "5 seconds")\
     .groupBy(
-        window("timestamp_event", "5 seconds"),
-        "asteroid_full_name","hazardous_flag"
-    ).agg(
-        *[F.avg(col).alias(col+"_avg")
-        for col in schema_KM_col_double
-        ]
+        window(col("timestamp_ingest"),"10 seconds")
+        )\
+    .agg(
+        F.approx_count_distinct("hex").alias("nb_plane"),
+        F.round(F.avg("gs_km_h"),2).alias("average_ground_speed_km_h"),
+        F.round(F.avg("alt_geom_km"),2).alias("average_altitude_geom_km"),
+        F.sum(col("alert")).alias("nb_alert")
     )
 
-df_kpi_size = df_grouped.withColumn(
-    "Size_kpi",
-    F.when(col("diameter_avg_km_avg") < 0.05, "tiny")
-    .when(col("diameter_avg_km_avg") < 0.2,"small")
-    .when(col("diameter_avg_km_avg") < 1,"medium")
-    .otherwise("large")
-)
-df_kpi_mach = df_kpi_size.withColumn(
-    "mach_kpi",
-    (col("velocity_km_s_avg")*3600)/1224,
+df_gold_total = df_gold_total.select(
+    F.col("window.start").alias("window_start"),
+    F.col("window.end").alias("window_end"),
+    F.col("nb_plane"),
+    F.col("average_ground_speed_km_h"),
+    F.col("average_altitude_geom_km"),
+    F.col("nb_alert")
 )
 
-df_risk = df_kpi_mach.withColumn(
-    "risk_score",
-    (
-        F.when(col("hazardous_flag") == True, 50).otherwise(0)
-        + F.when(col("diameter_avg_km_avg")<1, 20).otherwise(0)
-        + F.when(col("miss_distance_km_avg") < lunar_distance_km, 40)
-          .when(col("miss_distance_km_avg") < lunar_distance_km * 5, 25)
-          .when(col("miss_distance_km_avg") < lunar_distance_km *20, 10)
-          .otherwise(0)
-        + F.when(col("mach_kpi") > 5, 15).otherwise(0)
+query_gold_total = writer.write_stream(
+    df_gold_total,
+    "airplane_gold_total",
+    "/opt/spark/work-dir/checkpoints/airplane_gold_total_v2"
     )
-)
-df_risk_clean=(df_risk\
-    .withColumn("window_start",col("window.start"))\
-    .withColumn("window_end",col("window.end"))\
-    .drop("window")
+
+df_gold_KPI_speed = df_silver\
+    .withWatermark("timestamp_ingest", "5 seconds")\
+    .groupBy(
+        window(col("timestamp_ingest"),"10 seconds"),
+        "KPI_speed_type"
+        )\
+    .agg(
+        F.approx_count_distinct("hex").alias("nb_plane_per_speed_type"),
+        F.round(F.avg("gs_km_h"),2).alias("average_ground_speed_km_h_per_speed_type"),
+        F.round(F.avg("alt_geom_km"),2).alias("average_altitude_geom_km_per_speed_type"),
+        F.sum(col("alert")).alias("nb_alert_per_speed_type")
+        )
+
+df_gold_KPI_speed = df_gold_KPI_speed.select(
+    F.col("window.start").alias("window_start"),
+    F.col("window.end").alias("window_end"),
+    F.col("KPI_speed_type"),
+    F.col("nb_plane_per_speed_type"),
+    F.col("average_ground_speed_km_h_per_speed_type"),
+    F.col("average_altitude_geom_km_per_speed_type"),
+    F.col("nb_alert_per_speed_type")
 )
 
+query_gold_KPI_speed = writer.write_stream(
+    df_gold_KPI_speed,
+    "airplane_gold_kpi_speed",
+    "/opt/spark/work-dir/checkpoints/airplane_gold_kpi_speed_v2"
+    )
 
+spark.streams.awaitAnyTermination()
+
+
+
+"""
 def write_table(batch_df, batch_id):
     df_dashboard = batch_df\
     .withColumn(
@@ -177,7 +204,7 @@ finally:
     if os.path.exists(ready_file):
         os.remove(ready_file)
          
-         
+"""
          
          
 

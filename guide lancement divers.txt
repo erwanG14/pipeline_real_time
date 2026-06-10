@@ -23,3 +23,8 @@ resultat dans fenêtre launch_docker
 
  Docker qui lance les deux APP 
  Transformation dans le comsumer Spark fonctionnelle a part group by (pas de batch prouvant l"efficacité)
+
+ test sql 
+ SELECT count(*) FROM airplane_silver LIMIT 10;
+ SELECT count(*) FROM airplane_gold_total LIMIT 10;
+ SELECT count(*) FROM airplane_gold_KPI_speed LIMIT 10;
