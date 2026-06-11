@@ -51,8 +51,7 @@ pipeline_real_time/
     ├── writer.py
     └── api_package/
         ├── __init__.py
-        ├── airplane_live_api.py
-        └── nasa_request.py
+        └── airplane_live_api.py
 ```
 
 ## Fonctionnement
