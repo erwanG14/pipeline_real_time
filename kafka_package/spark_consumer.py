@@ -5,10 +5,6 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StringType, IntegerType, DoubleType,BooleanType , TimestampType
 from pyspark.sql.functions import col, from_json, window,to_timestamp,round
 
-ready_file = "/opt/spark/work-dir/status/consumer_ready"
-"""if os.path.exists(ready_file):
-    os.remove(ready_file) """
-
 spark = SparkSession.builder\
     .appName("KafkaStream")\
     .master("local[*]")\
@@ -54,9 +50,6 @@ schema = StructType()\
     .add("seen_pos",DoubleType()) \
     .add("timestamp_ingest",TimestampType())
 
-
-
-
 df = df_raw\
     .selectExpr("CAST(value AS STRING) as json")\
     .select(from_json(col("json"), schema).alias("data"))\
@@ -84,72 +77,6 @@ query = df_silver.writeStream \
     .start()
 
 query.awaitTermination()
-
-
-
-
-"""
-def write_table(batch_df, batch_id):
-    df_dashboard = batch_df\
-    .withColumn(
-    "distance_lunar_equivalent",
-    col("miss_distance_km_avg") / F.lit(lunar_distance_km)
-).withColumn(
-    "is_close_approach",
-    col("miss_distance_km_avg") < F.lit(lunar_distance_km * 5)
-).select(
-    "window_start",
-    "window_end",
-    "asteroid_full_name",
-    "hazardous_flag",
-    "risk_score",
-    "size_kpi",
-    "mach_kpi",
-    "velocity_km_s_avg",
-    "miss_distance_km_avg",
-    "distance_lunar_equivalent",
-    "is_close_approach"
-)
-    df_dashboard = df_dashboard.dropDuplicates([
-        "asteroid_full_name",
-        "risk_score",
-        "size_kpi",
-        "mach_kpi",
-        "velocity_km_s_avg"
-    ])
-    batch_df.write\
-        .format("jdbc") \
-        .option("url", "jdbc:postgresql://postgres:5432/asteroids_db") \
-        .option("dbtable", "asteroid_risk_raw") \
-        .option("user", "spark") \
-        .option("password", "spark") \
-        .option("driver", "org.postgresql.Driver") \
-        .mode("append") \
-        .save()
-    
-    df_dashboard.write\
-        .format("jdbc") \
-        .option("url", "jdbc:postgresql://postgres:5432/asteroids_db") \
-        .option("dbtable", "asteroid_risk_dashboard_raw") \
-        .option("user", "spark") \
-        .option("password", "spark") \
-        .option("driver", "org.postgresql.Driver") \
-        .mode("append") \
-        .save()
-
-query = df_risk_clean.writeStream\
-         .foreachBatch(write_table)\
-         .outputMode("update")\
-         .option("checkpointLocation", "/opt/spark/work-dir/checkpoints/asteroid_dashboard") \
-         .start()
-open(ready_file, "w").close()
-try:
-    query.awaitTermination()
-finally:
-    if os.path.exists(ready_file):
-        os.remove(ready_file)
-         
-"""
          
          
 
